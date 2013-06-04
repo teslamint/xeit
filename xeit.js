@@ -64,7 +64,7 @@ var xeit = (function () {
 
     var SoftForum = function (html, smime_header, smime_body, info_msg, ui_option, ui_desc) {
         this.html = html || '';
-        this.smime_header = this.peel(smime_header);
+        this.smime_header = this.peel(smime_header, true);
         this.smime_body = this.peel(smime_body);
         this.info_msg = this.peel(info_msg, true);
         this.ui_option = ui_option || '';
@@ -74,15 +74,13 @@ var xeit = (function () {
     SoftForum.prototype = new Vendor('XecureExpress');
     $.extend(SoftForum.prototype, {
         init: function () {
-            var headerWords = CryptoJS.enc.Base64.parse(this.smime_header),
-                header = CryptoJS.enc.CP949.stringify(headerWords),
-                contentType = header.match(/Content-Type: \s*([\w-\/]+);*/i)[1];
+            var contentType = this.smime_header.match(/Content-Type: \s*([\w-\/]+);*/i)[1];
             if (contentType === 'application/pkcs7-mime') {
                 this.decrypt = function (password) {
                     return this.decryptSMIME(this.smime_body, password);
                 };
             } else if (contentType === 'application/x-pwd') {
-                var match = header.match(/X-XE_KEY: \s*([\d]+): \s*([\w+\/=]+);*/i);
+                var match = this.smime_header.match(/X-XE_KEY: \s*([\d]+): \s*([\w+\/=]+);*/i);
                 var kind = parseInt(match[1]);
                 var key = match[2];
                 this.decrypt = function (password) {
@@ -92,10 +90,10 @@ var xeit = (function () {
 
             //HACK: 구분자가 '보안메일'로 동일한 발송기관 강제 구분.
             var company = this.ui_desc;
-            if (company === '보안메일') {
+            if (company === '보안메일' || company === 'ｺｸｾﾈｸﾞﾀﾏ') {
                 if (this.html.indexOf('kbcard') > -1) {
                     company = 'Xeit.kbcard';
-                } else if (/(?=.*lottecard)(?=.*point)/.test(header)) {
+                } else if (/(?=.*lottecard)(?=.*point)/.test(this.smime_header)) {
                     company = 'Xeit.lottepoint';
                 } else if (this.html.indexOf('samsungcard.co.kr') > -1) {
                     company = 'Xeit.samsungcard';
@@ -104,6 +102,8 @@ var xeit = (function () {
                 } else if (this.info_msg.indexOf('KEB') > -1) {
                     company = 'Xeit.yescard';
                 }
+            } else if (company === '悼剧积疙 焊救皋老') {
+                company = '동양생명 보안메일';
             }
 
             this.sender = {
@@ -145,8 +145,7 @@ var xeit = (function () {
                 'Xeit.samsungcard': {
                     name: '삼성카드',
                     support: false,
-                    hint: '-',
-                    keylen: 0
+                    hint: '-'
                 },
 
                 'Xeit.uplus': {
@@ -167,6 +166,13 @@ var xeit = (function () {
                             'message': m.replace(/href="#topmove"/g, '')
                         };
                     }
+                },
+
+                '동양생명 보안메일': {
+                    name: '동양생명',
+                    support: true,
+                    hint: '주민등록번호 뒤',
+                    keylen: 7
                 },
 
                 '신한카드 보안메일': {
@@ -311,13 +317,13 @@ var xeit = (function () {
             this.dataArea = S.dataArea;
 
             this.hasher = {
-                MD5: CryptoJS.MD5,
-                SHA1: CryptoJS.SHA1
+                MD5: { helper: CryptoJS.MD5, algorithm: CryptoJS.algo.MD5 },
+                SHA1: { helper: CryptoJS.SHA1, algorithm: CryptoJS.algo.SHA1 }
             }[S.hash];
 
             this.cipher = {
-                DES: CryptoJS.DES,
-                SEED: CryptoJS.SEED
+                DES: { helper: CryptoJS.DES, algorithm: CryptoJS.algo.DES },
+                SEED: { helper: CryptoJS.SEED, algorithm: CryptoJS.algo.SEED }
             }[S.crypto[0]];
 
             this.mode = {
@@ -329,6 +335,14 @@ var xeit = (function () {
             }[S.crypto[2]];
 
             this.sender = {
+                BC: {
+                    name: 'NH농협카드',
+                    support: true,
+                    hint: '주민등록번호 뒤',
+                    keylen: '7',
+                    salt: 'nonghyup'
+                },
+
                 BO: {
                     name: '신한은행',
                     support: true,
@@ -338,7 +352,7 @@ var xeit = (function () {
                 },
 
                 CC: {
-                    name: '우리은행 (BC카드)',
+                    name: 'BC카드',
                     support: true,
                     hint: '주민등록번호 뒤',
                     keylen: 7,
@@ -349,6 +363,13 @@ var xeit = (function () {
                             'message': m
                         };
                     }
+                },
+
+                KA: {
+                    name: 'Initech',
+                    support: true,
+                    hint: '보안메일 비밀번호',
+                    salt: 'consulting'
                 },
 
                 TC: {
@@ -372,17 +393,29 @@ var xeit = (function () {
 
             if (S.keygen == 'INITECH') {
                 this.iv = CryptoJS.enc.Latin1.parse(S.iv);
+                this.salt = this.sender.salt;
                 this.keygen = this.keygenINITECH;
-            } else if (S.keygen == 'PBKDF2') {
-                this.iv = CryptoJS.enc.Base64.parse(S.iv);
-                this.keygen = this.keygenPBKDF2;
+            } else {
+                if (S.version >= 'J 1.0.3') {
+                    this.iv = CryptoJS.enc.Base64.parse(S.iv);
+                    this.salt = this.iv.clone();
+                } else {
+                    this.iv = CryptoJS.enc.Latin1.parse(S.iv);
+                    this.salt = CryptoJS.enc.Latin1.parse(this.sender.salt);
+                }
+
+                if (S.keygen == 'PBKDF1') {
+                    this.keygen = this.keygenPBKDF1;
+                } else if (S.keygen == 'PBKDF2') {
+                    this.keygen = this.keygenPBKDF2;
+                }
             }
         },
 
         unpack: function () {
             var blob = this.blob(this.contents);
             var struct = {
-                version: blob.read(9),
+                version: blob.read(9, true),
                 count: parseInt(blob.read(1), 10),
                 company: blob.read(2),
                 crypto: blob.read(25, true).split('/'),
@@ -398,21 +431,32 @@ var xeit = (function () {
         },
 
         keygenINITECH: function (password) {
-            var saltedKey1 = this.sender.salt + '|' + password;
+            var saltedKey1 = this.salt + '|' + password;
             var hashedKey = CryptoJS.SHA1(CryptoJS.SHA1(CryptoJS.SHA1(saltedKey1)));
-            var saltedKey2 = this.sender.salt + password + hashedKey.toString(CryptoJS.enc.Latin1);
-            return this.hasher(CryptoJS.enc.Latin1.parse(saltedKey2));
+            var saltedKey2 = this.salt + password + hashedKey.toString(CryptoJS.enc.Latin1);
+            return this.hasher.helper(CryptoJS.enc.Latin1.parse(saltedKey2));
+        },
+
+        keygenPBKDF1: function (password) {
+            return CryptoJS.PBKDF1(password, this.salt, {
+                keySize: this.cipher.algorithm.keySize,
+                hasher: this.hasher.algorithm,
+                iterations: 5139
+            });
         },
 
         keygenPBKDF2: function (password) {
-            return CryptoJS.PBKDF2(password, this.iv, { keySize: 128/32, iterations: 5139 });
+            return CryptoJS.PBKDF2(password, this.salt, {
+                keySize: this.cipher.algorithm.keySize,
+                iterations: 5139
+            });
         },
 
         decrypt: function (password) {
             var key = this.keygen(password);
             this.verify('Initech', key);
 
-            return this.cipher.decrypt(
+            return this.cipher.helper.decrypt(
                 {
                     ciphertext: this.dataArea
                 },
@@ -426,7 +470,7 @@ var xeit = (function () {
         },
 
         verify: function (secret, key) {
-            if (this.cipher.decrypt(
+            if (this.cipher.helper.decrypt(
                 {
                     ciphertext: this.checkArea
                 },
@@ -468,7 +512,7 @@ var xeit = (function () {
                 }
             } else {
                 return frame.replace(
-                    /id="InitechSMMsgToReplace">/,
+                    /id=['"]InitechSMMsgToReplace['"]>/,
                     '>' + message.replace(/\$/g, '$$$$')
                 );
             }
@@ -594,6 +638,84 @@ var xeit = (function () {
         }
     });
 
+    /*********************
+     * Natingtel MailDec *
+     *********************/
+
+    var Natingtel = function (html, document_mail) {
+        this.html = html || '';
+        this.document_mail = this.peel(document_mail);
+    };
+
+    Natingtel.prototype = new Vendor('MailDec');
+    $.extend(Natingtel.prototype, {
+        init: function () {
+            this.sender = {
+                name: '대신증권',
+                support: true,
+                hint: '주민등록번호 뒤',
+                keylen: 7
+            };
+        },
+
+        keygen: function (password) {
+            var message = CryptoJS.enc.Latin1.parse('cybos family ...'),
+                key = CryptoJS.enc.Latin1.parse(('11111111111' + password).substring(0, 16));
+            return {
+                next: function () {
+                    message = CryptoJS.SEED.encrypt(
+                        message,
+                        key,
+                        {
+                            padding: CryptoJS.pad.NoPadding,
+                            mode: CryptoJS.mode.CBC,
+                            iv: CryptoJS.enc.Hex.parse("0")
+                        }
+                    ).ciphertext;
+                    return message;
+                }
+            };
+        },
+
+        decrypt: function (password) {
+            var self = this;
+            var keyword = (function (password) {
+                var keygen = self.keygen(password),
+                    key = keygen.next(),
+                    i = 0;
+                return {
+                    next: function () {
+                        var keyword = key.words[i++];
+                        if (i == key.words.length) {
+                            key = keygen.next();
+                            i = 0;
+                        }
+                        return keyword;
+                    }
+                }
+            })(password);
+
+            var content = CryptoJS.enc.Base64.parse(this.document_mail),
+                length = content.words.length;
+            for (var i = 0; i < length; i++) {
+                content.words[i] ^= keyword.next();
+            }
+
+            this.verify(content, password);
+
+            //HACK: 뒷부분의 비밀번호 비교용 문자열 제거.
+            content.sigBytes -= password.length;
+            return content;
+        },
+
+        verify: function (content, password) {
+            //HACK: encode()의 stringify()와 중복.
+            if (CryptoJS.enc.CP949.stringify(content).slice(-password.length) != password) {
+                throw Error('다시 입력해보세요!');
+            }
+        }
+    });
+
     return {
         init: function (html) {
             //HACK: <object> 태그의 상위 노드로써 DOM에 임시로 추가하여 query 수행.
@@ -632,7 +754,7 @@ var xeit = (function () {
                     /^[\s\S]*<body.*?>|<\/body>[\s\S]*$/ig,
                     ''
                 );
-                $doc.empty().append($.parseHTML(body, document, true));
+                $doc.empty().append($.parseHTML(body, true));
                 this.vendor = new IniTech(
                     html,
                     $('param[name="IniSMContents"]').val(),
@@ -649,6 +771,11 @@ var xeit = (function () {
                 this.vendor = new Soft25(
                     html,
                     $('#JSEncContents').val()
+                );
+            } else if ($('#MailDec').length) {
+                this.vendor = new Natingtel(
+                    html,
+                    $('param[name="DocumentMail"]').val()
                 );
             } else {
                 this.vendor = new Vendor();

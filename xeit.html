@@ -9,11 +9,13 @@
         <link href='xeit.css' rel='stylesheet'>
         <script src='http://ajax.googleapis.com/ajax/libs/jquery/1.9.1/jquery.min.js'></script>
         <script src='http://netdna.bootstrapcdn.com/twitter-bootstrap/2.3.1/js/bootstrap.min.js'></script>
+        <script src='deps/crypto-js/build/rollups/pbkdf1.js'></script>
         <script src='deps/crypto-js/build/rollups/pbkdf2.js'></script>
         <script src='deps/crypto-js/build/rollups/tripledes.js'></script>
         <script src='deps/crypto-js/build/rollups/rc4.js'></script>
         <script src='deps/crypto-js/build/rollups/seed.js'></script>
         <script src='deps/crypto-js/build/components/enc-cp949.js'></script>
+        <script src='deps/crypto-js/build/components/pad-nopadding-min.js'></script>
         <script src='deps/asn1js/asn1.js'></script>
         <script src='deps/asn1js/base64.js'></script>
         <script src='deps/asn1js/oids.js'></script>
@@ -65,6 +67,8 @@
                 } else {
                     $('#auth-sender-support').addClass('label-important').text('미지원');
 
+                    $('input#auth-password').prop('disabled', true);
+
                     $('#auth-info').addClass('alert-error').html('<strong>모르겠어요!</strong> 보안메일이 아니거나 아직 지원하지 않는 형식인 것 같아요.');
 
                     $('#auth-submit').addClass('btn-danger').html('<i class="icon-ban-circle icon-white"></i> 돌아가기');
@@ -78,12 +82,11 @@
                 }
 
                 // 비밀번호 설명 표시.
-                if (sender['keylen']) {
+                if (typeof sender['keylen'] !== 'undefined') {
                     $('input#auth-password').prop('placeholder', sender['hint'] + ' (' + sender['keylen'].toString().replace(',', '~') + '자리)')
                                             .prop('pattern', '[0-9]{' + sender['keylen'] + '}');
                 } else {
-                    $('input#auth-password').prop('placeholder', sender['hint'])
-                                            .prop('disabled', true);
+                    $('input#auth-password').prop('placeholder', sender['hint']);
                 }
             }
 
@@ -223,6 +226,14 @@
                                             </thead>
                                             <tbody>
                                                 <tr>
+                                                    <td>BC카드</td>
+                                                    <td>INISAFE Mail</td>
+                                                    <td>INITECH</td>
+                                                    <td>SEED, SHA1, MD5</td>
+                                                    <td><i class='icon-ok'></i></td>
+                                                    <td>농협, 우리은행 등</td>
+                                                </tr>
+                                                <tr>
                                                     <td>KB국민카드</td>
                                                     <td>XecureExpress</td>
                                                     <td>PKCS#7</td>
@@ -255,12 +266,36 @@
                                                     <td>확인중</td>
                                                 </tr>
                                                 <tr>
-                                                    <td>SKT</td>
+                                                    <td>NH농협카드</td>
                                                     <td>INISAFE Mail</td>
                                                     <td>PBKDF2</td>
                                                     <td>SEED, HMAC-SHA1</td>
                                                     <td><i class='icon-ok'></i></td>
-                                                    <td>최근에 유형 변경?</td>
+                                                    <td></td>
+                                                </tr>
+                                                <tr>
+                                                    <td>SKT</td>
+                                                    <td>INISAFE Mail</td>
+                                                    <td>PBKDF2 / INITECH</td>
+                                                    <td>SEED, HMAC-SHA1 / MD5</td>
+                                                    <td><i class='icon-ok'></i></td>
+                                                    <td></td>
+                                                </tr>
+                                                <tr>
+                                                    <td>대신증권</td>
+                                                    <td>MailDec</td>
+                                                    <td>-</td>
+                                                    <td>SEED</td>
+                                                    <td><i class='icon-ok'></i></td>
+                                                    <td></td>
+                                                </tr>
+                                                <tr>
+                                                    <td>동양생명</td>
+                                                    <td>XecureExpress</td>
+                                                    <td>PKCS#7</td>
+                                                    <td>DES, SHA1</td>
+                                                    <td><i class='icon-ok'></i></td>
+                                                    <td></td>
                                                 </tr>
                                                 <tr>
                                                     <td>롯데멤버스카드</td>
@@ -299,14 +334,6 @@
                                                     <td>XecureExpress</td>
                                                     <td>PWD</td>
                                                     <td>DES, SHA1</td>
-                                                    <td><i class='icon-ok'></i></td>
-                                                    <td></td>
-                                                </tr>
-                                                <tr>
-                                                    <td>우리은행 (BC카드)</td>
-                                                    <td>INISAFE Mail</td>
-                                                    <td>INITECH</td>
-                                                    <td>SEED, SHA1, MD5</td>
                                                     <td><i class='icon-ok'></i></td>
                                                     <td></td>
                                                 </tr>
