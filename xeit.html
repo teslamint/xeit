@@ -4,98 +4,222 @@
         <meta charset='utf-8'>
         <title>Xeit</title>
         <meta name='viewport' content='width=device-width, initial-scale=1.0'>
-        <link href='http://netdna.bootstrapcdn.com/twitter-bootstrap/2.3.1/css/bootstrap-combined.min.css' rel='stylesheet'>
-        <link href='http://netdna.bootstrapcdn.com/font-awesome/3.0.2/css/font-awesome.css' rel='stylesheet'>
-        <link href='xeit.css' rel='stylesheet'>
-        <script src='http://ajax.googleapis.com/ajax/libs/jquery/1.9.1/jquery.min.js'></script>
-        <script src='http://netdna.bootstrapcdn.com/twitter-bootstrap/2.3.1/js/bootstrap.min.js'></script>
-        <script src='deps/crypto-js/build/rollups/pbkdf1.js'></script>
-        <script src='deps/crypto-js/build/rollups/pbkdf2.js'></script>
-        <script src='deps/crypto-js/build/rollups/tripledes.js'></script>
-        <script src='deps/crypto-js/build/rollups/rc4.js'></script>
-        <script src='deps/crypto-js/build/rollups/seed.js'></script>
-        <script src='deps/crypto-js/build/components/enc-cp949.js'></script>
-        <script src='deps/crypto-js/build/components/pad-nopadding-min.js'></script>
-        <script src='deps/asn1js/asn1.js'></script>
-        <script src='deps/asn1js/base64.js'></script>
-        <script src='deps/asn1js/oids.js'></script>
-        <script src='deps/srcdoc-polyfill/srcdoc-polyfill.min.js'></script>
-        <script src='xeit.js'></script>
+        <link href='http://netdna.bootstrapcdn.com/twitter-bootstrap/2.3.2/css/bootstrap-combined.no-icons.min.css' rel='stylesheet'>
+        <link href='http://netdna.bootstrapcdn.com/font-awesome/3.2.1/css/font-awesome.min.css' rel='stylesheet'>
+        <link href='css/xeit.css' rel='stylesheet'>
+        <script src='http://ajax.googleapis.com/ajax/libs/jquery/1.10.1/jquery.min.js'></script>
+        <script src='http://netdna.bootstrapcdn.com/twitter-bootstrap/2.3.2/js/bootstrap.min.js'></script>
+        <script src='js/deps/srcdoc-polyfill/srcdoc-polyfill.min.js'></script>
+        <script src='js/xeit.js'></script>
         <script>
-            function setupAuthDialog() {
-                $authDialog = $('#auth-dialog').modal({
-                    backdrop: 'static',
-                    keyboard: false
-                }).on('shown', function () {
-                    $('input#auth-password').trigger('focus');
+            $.fn.removeClassByPrefix = function (prefix) {
+                return this.removeClass(function (index, css) {
+                    return (css.match(RegExp('\\b'+prefix+'\\S+', 'g')) || []).join(' ');
                 });
-                var sender = xeit.vendor.sender;
+            };
 
-                // 발송기관 표시.
-                $('#auth-sender-name').val(sender['name']);
+            function displayError(e) {
+                e.preventDefault();
 
-                // 지원여부에 따른 인증화면 구성.
-                if (sender['support']) {
-                    $('#auth-sender-support').addClass('label-success').text('지원');
+                //HACK: Error와 ErrorEvent의 message가 조금 다름.
+                message = e.message.replace(/(Uncaught )?Error: /, '');
 
-                    $('input#auth-password').on('keyup', function (e) {
-                        //HACK: 엔터키로 폼 제출하는 경우 오류 메시지 초기화 방지.
-                        if (e.keyCode != 13) {
-                            $('#auth-password-group').removeClass('error');
-                            $('#auth-password-help').text('');
-                        }
-                    });
+                $('#auth-password-group').addClass('error');
+                setupAuthAlert('error', '<strong>앗!</strong> ' + message);
 
-                    $('#auth-info').addClass('alert-info').html('<strong>걱정마세요!</strong> 비밀번호와 메일 내용을 외부로 전송하거나 저장하지 않아요.');
+                unlockAuthDialog();
+            }
 
-                    $('#auth-submit').addClass('btn-primary').html('<i class="icon-eye-open icon-white"></i> 열어보기');
-                    $('#auth-form').on('submit', function (e) {
-                        e.preventDefault();
+            function resetError(e) {
+                e.preventDefault();
 
-                        var password = $('input#auth-password').val();
-                        try {
-                            var message = xeit.load(password);
-                        } catch (err) {
-                            $('#auth-password-group').addClass('error');
-                            $('#auth-password-help').text(err.message);
-                            throw err;
-                        }
-                        $authDialog.on('hidden', function () {
-                            showMail(message);
-                        }).modal('hide');
-                    });
+                $('#auth-password-group').removeClass('error');
+                setupAuthAlert('error');
+            }
+
+            function setupAuthAlert(tone, message) {
+                var $auth_alert = $('#auth-alert');
+                tone = tone || '';
+                if (message) {
+                    $auth_alert.removeClassByPrefix('alert-');
+                    if (tone) {
+                        $auth_alert.addClass('alert-'+tone);
+                    }
+
+                    $auth_alert.html(message).append($('<a>', {
+                        class: 'close',
+                        href: '#',
+                        html: '&times;'
+                    }).on('click', function (e) {
+                        $auth_alert.fadeOut();
+                        $('input#auth-password').focus();
+                    })).fadeIn();
                 } else {
-                    $('#auth-sender-support').addClass('label-important').text('미지원');
-
-                    $('input#auth-password').prop('disabled', true);
-
-                    $('#auth-info').addClass('alert-error').html('<strong>모르겠어요!</strong> 보안메일이 아니거나 아직 지원하지 않는 형식인 것 같아요.');
-
-                    $('#auth-submit').addClass('btn-danger').html('<i class="icon-ban-circle icon-white"></i> 돌아가기');
-                    $('#auth-form').on('submit', function (e) {
-                        e.preventDefault();
-
-                        $authDialog.on('hidden', function () {
-                            parent.postMessage('fallback', '*');
-                        }).modal('hide');
-                    });
-                }
-
-                // 비밀번호 설명 표시.
-                if (typeof sender['keylen'] !== 'undefined') {
-                    $('input#auth-password').prop('placeholder', sender['hint'] + ' (' + sender['keylen'].toString().replace(',', '~') + '자리)')
-                                            .prop('pattern', '[0-9]{' + sender['keylen'] + '}');
-                } else {
-                    $('input#auth-password').prop('placeholder', sender['hint']);
+                    if ($auth_alert.hasClass('alert-'+tone)) {
+                        $auth_alert.fadeOut();
+                    }
                 }
             }
 
+            function setupAuthButton(kind, enable) {
+                var $auth_submit = $('#auth-submit').removeClassByPrefix('btn-');
+                if (kind == 'open') {
+                    $auth_submit.addClass('btn-primary').html('<i class="icon-eye-open icon-white"></i> 열어보기');
+                } else if (kind == 'wait') {
+                    $auth_submit.addClass('btn-info').html('<i class="icon-eye-close icon-white"></i> 기다리기');
+                } else if (kind == 'return') {
+                    $auth_submit.addClass('btn-danger').html('<i class="icon-ban-circle icon-white"></i> 돌아가기');
+                }
+
+                disable = (typeof enable !== 'undefined') ? !enable : false;
+                $auth_submit.prop('disabled', disable).toggleClass('disabled', disable);
+            }
+
+            function unlockAuthDialog() {
+                $('#auth-spinner').fadeOut();
+                $('input#auth-password').prop('disabled', false).focus();
+                setupAuthButton('open', true);
+            }
+
+            function lockAuthDialog() {
+                $('#auth-spinner').fadeIn();
+                $('input#auth-password').prop('disabled', true).blur();
+                setupAuthButton('wait', false);
+            }
+
+            function setupSenderBox(name, support, experimental) {
+                name = name || '';
+                $('#auth-sender-name').val(name);
+
+                if (typeof support !== 'undefined') {
+                    if (support) {
+                        if (experimental) {
+                            var icon_class = 'text-warning';
+                            var content = '<span class="label label-warning">확인필요</span> 제대로 열릴지 모르겠네요.';
+                        } else {
+                            var icon_class = 'text-success';
+                            var content = '<span class="label label-success">지원</span> 아마 열 수 있을 거예요.'
+                        }
+                    } else {
+                        var icon_class = 'text-error';
+                        var content = '<span class="label label-important">미지원</span> 지금은 열 수가 없어요.';
+                    }
+                } else {
+                    var icon_class = 'muted';
+                    var content = '';
+                }
+                $('#sender-button > i').removeClassByPrefix('text-').addClass(icon_class);
+                $('#sender-button').popover({
+                    html: true,
+                    placement: 'top',
+                    trigger: 'click | hover'
+                }).on('shown', function (e) {
+                    //HACK: modal의 shown이 호출되는 것 방지.
+                    e.stopPropagation();
+                }).data('popover').options.content = content;
+            }
+
+            function setupPasswordBox(support, hint, keylen) {
+                var $auth_password = $('input#auth-password').off('blur input').on('blur input', resetError);
+
+                support = support || false;
+                $auth_password.prop('disabled', !support);
+                if (support) {
+                    $auth_password.focus();
+                } else {
+                    $auth_password.blur();
+                }
+
+                hint = hint || '';
+                if (typeof keylen !== 'undefined') {
+                    var placeholder = hint + ' (' + keylen.toString().replace(',', '~') + '자리)';
+                    var pattern = '[0-9]{' + keylen + '}';
+                } else {
+                    var placeholder = hint;
+                    var pattern = '';
+                }
+                $auth_password.prop('placeholder', placeholder).prop('pattern', pattern);
+            }
+
+            function showAuthDialog() {
+                var $auth_dialog = $('#auth-dialog').modal({
+                    backdrop: 'static',
+                    keyboard: false
+                });
+
+                setupSenderBox();
+                setupPasswordBox(false);
+
+                if (window.chrome && location.search != '?chrome') {
+                    setupAuthAlert('success', '<strong>나왔습니다!</strong> 크롬에서는 <a href="http://j.mp/xeitce" target="_blank">확장 프로그램</a>으로 더욱 쉽고 편하게 사용하세요.');
+                } else {
+                    setupAuthAlert('info', '<strong>걱정마세요!</strong> 비밀번호와 메일 내용을 외부로 전송하거나 저장하지 않아요.');
+                }
+
+                lockAuthDialog();
+                return $auth_dialog;
+            }
+
+            function hideAuthDialog(callback) {
+                return $('#auth-dialog').on('hidden', callback).modal('hide');
+            }
+
+            function setupAuthDialog(sender) {
+                unlockAuthDialog();
+
+                // 발송기관 표시.
+                setupSenderBox(sender.name, sender.support, sender.experimental);
+
+                // 비밀번호 설명 표시.
+                setupPasswordBox(sender.support, sender.hint, sender.keylen);
+
+                // 지원여부에 따른 인증화면 구성.
+                if (sender.support) {
+                    setupAuthButton('open');
+                } else {
+                    setupAuthAlert('warning', '<strong>모르겠어요!</strong> 보안메일이 아니거나 아직 지원하지 않는 형식인 것 같아요.');
+                    setupAuthButton('return');
+                }
+
+                // 버튼 동작 설정.
+                $('#auth-form').on('submit', function (e) {
+                    e.preventDefault();
+
+                    if (sender.support) {
+                        lockAuthDialog();
+
+                        var password = $('input#auth-password').val();
+                        xeit.load(
+                            password,
+                            function (r) {
+                                hideAuthDialog(function () {
+                                    showMail(r.message);
+                                });
+                            },
+                            displayError
+                        );
+                    } else {
+                        hideAuthDialog(function () {
+                            parent.postMessage('fallback', '*');
+                        });
+                    }
+                });
+            }
+
             function loadMail() {
-                window.addEventListener('message', function (e) {
-                    xeit.init(e.data);
-                    setupAuthDialog();
-                }, false);
-                window.parent.postMessage('ready', '*');
+                showAuthDialog().on('shown', function () {
+                    window.addEventListener('message', function (e) {
+                        var html = e.data;
+                        xeit.init(
+                            html,
+                            function (r) {
+                                setupAuthDialog(r.sender);
+                            },
+                            displayError
+                        );
+                    }, false);
+                    window.parent.postMessage('ready', '*');
+                });
             }
 
             function showMail(message) {
@@ -107,8 +231,7 @@
                 srcDoc.set(content, message);
 
                 //HACK: 로딩 지연시 프레임 잘리는 현상 방지.
-                $content.height(window.innerHeight);
-                $content.load(function () {
+                $content.height(window.innerHeight).load(function () {
                     $content.height(content.contentDocument.documentElement.scrollHeight);
                 });
 
@@ -145,29 +268,33 @@
             <div class='tab-content'>
                 <div id='auth' class='tab-pane active'>
                     <div id='auth-dialog' class='modal hide fade'>
-                        <div class='modal-header'>
-                            <h3>보안메일</h3>
-                        </div>
-                        <div class='modal-body'>
-                            <form id='auth-form' class='form-horizontal'>
+                        <form id='auth-form' class='form-horizontal modal-form'>
+                            <div class='modal-header'>
+                                <i id='auth-spinner' class='icon-asterisk icon-spin icon-2x pull-right'></i><h3>보안메일</h3>
+                            </div>
+                            <div class='modal-body'>
                                 <div class='control-group'>
-                                    <label class='control-label' for='auth-password'>보낸 곳</label>
                                     <div class='controls'>
-                                        <input type='text' id='auth-sender-name' disabled> <span class='help-inline'><span id='auth-sender-support' class='label'></span></span>
+                                        <div class='input-prepend'>
+                                            <a href='#' id='sender-button' class='btn'><i class='icon-envelope'></i></a>
+                                            <input type='text' id='auth-sender-name' disabled>
+                                        </div>
                                     </div>
                                 </div>
                                 <div id='auth-password-group' class='control-group'>
-                                    <label class='control-label' for='auth-password'>비밀번호</label>
                                     <div class='controls'>
-                                        <input type='password' id='auth-password' required> <span id='auth-password-help' class='help-inline'></span>
+                                        <div class='input-prepend'>
+                                            <a href='#' id='password-button' class='btn disabled'><i class='icon-key'></i></a>
+                                            <input type='password' id='auth-password' placeholder='비밀번호' required>
+                                        </div>
                                     </div>
                                 </div>
-                            </form>
-                            <div id='auth-info' class='alert'></div>
-                        </div>
-                        <div class='modal-footer'>
-                            <button type='submit' form='auth-form' id='auth-submit' class='btn'></button>
-                        </div>
+                                <div id='auth-alert' class='alert'></div>
+                            </div>
+                            <div class='modal-footer'>
+                                <button type='submit' id='auth-submit' class='btn'></button>
+                            </div>
+                        </form>
                     </div>
                 </div>
                 <div id='mail' class='tab-pane'>
@@ -197,13 +324,14 @@
                                     <dt>설치는 어찌하죠?</dt>
                                         <p>일단 웹 브라우저 상단에 북마클릿을 넣을 수 있는 공간이 있는지 확인해보세요. 사파리에서는 책갈피 막대(Bookmarks Bar), 크롬에서는 북마크바(Bookmarks Bar), 파이어폭스에서는 북마크 도구모음(Bookmarks Toolbar)이라고 부르는 곳입니다. 맥이라면 <span class='label'>⌥</span> + <span class='label'>⌘</span> + <span class='label'>B</span>를 눌러서 확인해볼 수도 있습니다. 그 다음에는 아래의 버튼을 끌어 넣으면 됩니다.</p>
                                         <div class='well'>
-                                            <p class='text-center'><a href="javascript:(function(){var%20xeit=document.getElementById('xeit');if(xeit){return;}var%20attachment=document.getElementsByTagName('html')[0].outerHTML;var%20_body=document.body;document.body=document.createElement('body');document.body.style.margin=0;document.body.style.padding=0;document.body.style.height='100%25';xeit=document.createElement('iframe');xeit.setAttribute('id','xeit');xeit.setAttribute('src','http://tomyun.github.io/xeit/xeit.html');xeit.style.width='100%25';xeit.style.height='100%25';xeit.style.border=0;document.body.appendChild(xeit);window.addEventListener('message',function(e){switch(e.data){case%20'ready':xeit.contentWindow.postMessage(attachment,'*');break;case%20'fallback':document.body=_body;break;}},false);})();"><button class='btn btn-info' type='button'><i class='icon-bookmark icon-white'></i> Xeit</button></a></p>
+                                            <p class='text-center'><a href="javascript:(function(){var%20b=document,c=b.getElementById(%22xeit%22);if(!c){window.addEventListener(%22message%22,function(a){%22ready%22==a.data%3Fc.contentWindow.postMessage(d,%22*%22):%22fallback%22==a.data%26%26(b.body=e)});var%20a=b.documentElement,d=a.outerHTML;a.style.height=%22100%25%22;var%20e=b.body,a=b.body=b.createElement(%22body%22);a.style.cssText=%22margin:0;padding:0;height:100%25%22;c=b.createElement(%22iframe%22);c.id=%22xeit%22;c.src=%22http://tomyun.github.io/xeit/xeit.html%22;c.style.cssText=%22width:100%25;height:100%25;border:0%22;a.appendChild(c)}})();"><button class='btn btn-info' type='button'><i class='icon-bookmark icon-white'></i> Xeit</button></a></p>
                                             <p class='text-center text-info'>이 버튼을 브라우저 상단의 책갈피에 끌어 넣으세요!</p>
                                         </div>
                                     </dd>
                                     <dt>어디서 쓸 수 있죠?</dt>
                                     <dd>
                                         <p>맥에서 사파리(6)를 기준으로 만들었으며 크롬(26)과 파이어폭스(20)에서도 돌아가는 것을 확인하였습니다. 인터넷 익스플로러에서는 확인해보지 못 했네요.</p>
+                                        <p>참고로 크롬에서는 직접 북마클릿을 설치하거나 눌러줄 필요 없이 <a herf="http://j.mp/xeitce" target="_blank">확장 프로그램</a>으로 보다 쉽고 편리하게 이용할 수 있습니다.</p>
                                     </dd>
                                     <dt>믿을 수 있나요?</dt>
                                     <dd>
@@ -247,23 +375,31 @@
                                                     <td>INITECH</td>
                                                     <td>SEED, SHA1, MD5</td>
                                                     <td><i class='icon-ok'></i></td>
-                                                    <td></td>
+                                                    <td>유선 (QOOK)</td>
                                                 </tr>
                                                 <tr>
-                                                    <td>KTF</td>
+                                                    <td>KT</td>
                                                     <td>JX-Mail Enterprise</td>
                                                     <td>DSMail</td>
                                                     <td>RC4, SEED, MD5</td>
                                                     <td><i class='icon-ok'></i></td>
-                                                    <td></td>
+                                                    <td>무선 (SHOW)</td>
                                                 </tr>
                                                 <tr>
                                                     <td>LG U+</td>
                                                     <td>XecureExpress</td>
                                                     <td>?</td>
                                                     <td>?</td>
+                                                    <td><i class='icon-ok'></i></td>
+                                                    <td></td>
+                                                </tr>
+                                                <tr>
+                                                    <td>MG손해보험</td>
+                                                    <td>INISAFE Mail</td>
+                                                    <td>?</td>
+                                                    <td>?</td>
                                                     <td><i class='icon-time'></i></td>
-                                                    <td>확인중</td>
+                                                    <td>확인필요</td>
                                                 </tr>
                                                 <tr>
                                                     <td>NH농협카드</td>
@@ -282,12 +418,44 @@
                                                     <td></td>
                                                 </tr>
                                                 <tr>
+                                                    <td>The-K손해보험</td>
+                                                    <td>INISAFE Mail</td>
+                                                    <td>?</td>
+                                                    <td>?</td>
+                                                    <td><i class='icon-time'></i></td>
+                                                    <td>확인필요</td>
+                                                </tr>
+                                                <tr>
+                                                    <td>국세청</td>
+                                                    <td>XecureExpress</td>
+                                                    <td>PKCS#7</td>
+                                                    <td>RC2, SHA1</td>
+                                                    <td><i class='icon-ok'></i></td>
+                                                    <td></td>
+                                                </tr>
+                                                <tr>
+                                                    <td>교보생명</td>
+                                                    <td>INISAFE Mail</td>
+                                                    <td>?</td>
+                                                    <td>?</td>
+                                                    <td><i class='icon-time'></i></td>
+                                                    <td>확인필요</td>
+                                                </tr>
+                                                <tr>
                                                     <td>대신증권</td>
                                                     <td>MailDec</td>
                                                     <td>-</td>
                                                     <td>SEED</td>
                                                     <td><i class='icon-ok'></i></td>
                                                     <td></td>
+                                                </tr>
+                                                <tr>
+                                                    <td>동부화재</td>
+                                                    <td>INISAFE Mail</td>
+                                                    <td>?</td>
+                                                    <td>?</td>
+                                                    <td><i class='icon-time'></i></td>
+                                                    <td>확인필요</td>
                                                 </tr>
                                                 <tr>
                                                     <td>동양생명</td>
@@ -302,8 +470,16 @@
                                                     <td>XecureExpress</td>
                                                     <td>?</td>
                                                     <td>?</td>
-                                                    <td><i class='icon-time'></i></td>
-                                                    <td>확인중</td>
+                                                    <td><i class='icon-ok'></i></td>
+                                                    <td></td>
+                                                </tr>
+                                                <tr>
+                                                    <td>미래에셋생명</td>
+                                                    <td>XecureExpress</td>
+                                                    <td>PWD</td>
+                                                    <td>DES, SHA1</td>
+                                                    <td><i class='icon-ok'></i></td>
+                                                    <td></td>
                                                 </tr>
                                                 <tr>
                                                     <td>병무청</td>
@@ -314,12 +490,28 @@
                                                     <td>DRM 플러그인 필요</td>
                                                 </tr>
                                                 <tr>
+                                                    <td>삼성생명</td>
+                                                    <td>XecureExpress</td>
+                                                    <td>PKCS#7</td>
+                                                    <td>DES, SHA1</td>
+                                                    <td><i class='icon-ok'></i></td>
+                                                    <td></td>
+                                                </tr>
+                                                <tr>
                                                     <td>삼성카드</td>
                                                     <td>XecureExpress</td>
                                                     <td>PWD</td>
                                                     <td>DES, SHA1</td>
-                                                    <td><i class='icon-remove'></i></td>
-                                                    <td>홈페이지 연결 필요</td>
+                                                    <td><i class='icon-ok'></i></td>
+                                                    <td></td>
+                                                </tr>
+                                                <tr>
+                                                    <td>신한생명</td>
+                                                    <td>INISAFE Mail</td>
+                                                    <td>?</td>
+                                                    <td>?</td>
+                                                    <td><i class='icon-time'></i></td>
+                                                    <td>확인필요</td>
                                                 </tr>
                                                 <tr>
                                                     <td>신한은행</td>
@@ -346,12 +538,60 @@
                                                     <td></td>
                                                 </tr>
                                                 <tr>
+                                                    <td>푸르덴셜생명</td>
+                                                    <td>INISAFE Mail</td>
+                                                    <td>?</td>
+                                                    <td>?</td>
+                                                    <td><i class='icon-time'></i></td>
+                                                    <td>확인필요</td>
+                                                </tr>
+                                                <tr>
+                                                    <td>하나SK카드</td>
+                                                    <td>INISAFE Mail</td>
+                                                    <td>PBKDF1</td>
+                                                    <td>SEED, SHA1</td>
+                                                    <td><i class='icon-ok'></i></td>
+                                                    <td></td>
+                                                </tr>
+                                                <tr>
+                                                    <td>하나은행</td>
+                                                    <td>XecureExpress</td>
+                                                    <td>PWD</td>
+                                                    <td>SEED, SHA1</td>
+                                                    <td><i class='icon-ok'></i></td>
+                                                    <td></td>
+                                                </tr>
+                                                <tr>
+                                                    <td>한국씨티은행</td>
+                                                    <td>INISAFE Mail</td>
+                                                    <td>?</td>
+                                                    <td>?</td>
+                                                    <td><i class='icon-time'></i></td>
+                                                    <td>확인필요</td>
+                                                </tr>
+                                                <tr>
                                                     <td>한국투자증권</td>
                                                     <td>XecureExpress</td>
                                                     <td>PKCS#7</td>
                                                     <td>DES, SHA1</td>
                                                     <td><i class='icon-ok'></i></td>
                                                     <td></td>
+                                                </tr>
+                                                <tr>
+                                                    <td>한화생명</td>
+                                                    <td>INISAFE Mail</td>
+                                                    <td>?</td>
+                                                    <td>?</td>
+                                                    <td><i class='icon-time'></i></td>
+                                                    <td>확인필요</td>
+                                                </tr>
+                                                <tr>
+                                                    <td>현대해상</td>
+                                                    <td>INISAFE Mail</td>
+                                                    <td>?</td>
+                                                    <td>?</td>
+                                                    <td><i class='icon-time'></i></td>
+                                                    <td>확인필요</td>
                                                 </tr>
                                                 <tr>
                                                     <td>현대카드</td>
