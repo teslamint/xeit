@@ -125,6 +125,19 @@ extend(IniTech.prototype, {
             salt: 'bccard'
         },
 
+        CM: {
+            name: '하나카드',
+            support: true,
+            rule: [{
+                hint: '생년월일',
+                size: 6
+            }, {
+                hint: '사업자등록번호',
+                size: 10
+            }],
+            salt: 'kebhanacard'
+        },
+
         DI: {
             name: '하나SK카드',
             support: true,
